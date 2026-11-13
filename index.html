@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>스마트 단어 학습기 & PDF 생성기</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter & Noto Sans KR -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body {
+            font-family: 'Inter', 'Noto Sans KR', sans-serif;
+            background-color: #f8fafc;
+            color: #1e293b;
+        }
+
+        /* 인쇄 및 PDF 저장 전용 스타일 */
+        @media print {
+            @page {
+                size: A4 portrait;
+                margin: 12mm 14mm;
+            }
+            body {
+                background-color: #ffffff !important;
+                padding: 0 !important;
+                margin: 0 !important;
+            }
+            .no-print {
+                display: none !important;
+            }
+            .print-container {
+                box-shadow: none !important;
+                border: none !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                max-width: 100% !important;
+                width: 100% !important;
+            }
+            .print-header {
+                display: block !important;
+                margin-bottom: 14px;
+                padding-bottom: 8px;
+                border-bottom: 2px solid #1e293b;
+            }
+            /* 인쇄 시 입력창을 밑줄 빈칸으로 변환 */
+            .quiz-input {
+                border: none !important;
+                border-bottom: 1.5px solid #0f172a !important;
+                border-radius: 0 !important;
+                background: transparent !important;
+                color: transparent !important; /* 인쇄 시 빈칸으로 출력되도록 텍스트 숨김 (정답지 인쇄가 아닐 때) */
+                padding: 0 4px !important;
+                height: 18px !important;
+            }
+            body.print-with-answers .quiz-input {
+                color: #1d4ed8 !important;
+                font-weight: bold !important;
+            }
+            .quiz-feedback, .quiz-hint-btn {
+                display: none !important;
+            }
+            .page-break-inside-avoid {
+                break-inside: avoid;
+                page-break-inside: avoid;
+            }
+            table {
+                font-size: 9pt !important;
+            }
+            th, td {
+                padding: 5px 8px !important;
+            }
+        }
+
+        .print-header {
+            display: none;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+    <!-- 상단 네비게이션 / 헤더 -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 no-print shadow-sm">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="bg-blue-600 text-white p-2 rounded-xl shadow-sm">
+                    <i data-lucide="book-open-check" class="w-6 h-6"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">스마트 단어 학습기 & PDF 생성기</h1>
+                    <p class="text-xs text-slate-500">단어장 사진만 올리면 초4 맞춤 풀이 · 예문 · 온라인/PDF 퀴즈 자동 생성</p>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-2">
+                <label for="imageUpload" class="cursor-pointer inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold text-sm px-4 py-2.5 rounded-xl shadow-sm transition-all">
+                    <i data-lucide="camera" class="w-4 h-4"></i>
+                    <span>단어장 사진 업로드</span>
+                </label>
+                <input type="file" id="imageUpload" accept="image/*" class="hidden">
+            </div>
+        </div>
+    </header>
+
+    <!-- 메인 컨텐츠 영역 -->
+    <main class="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-6">
+        
+        <!-- 상태 알림 및 로딩 배너 -->
+        <div id="statusBanner" class="hidden mb-6 rounded-2xl p-4 border shadow-sm transition-all no-print">
+            <div class="flex items-center gap-3">
+                <div id="statusIcon"></div>
+                <div class="flex-1">
+                    <h3 id="statusTitle" class="font-bold text-sm"></h3>
+                    <p id="statusDesc" class="text-xs mt-0.5"></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 이미지 미리보기 & 제목 편집 바 -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 mb-6 shadow-sm no-print flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div class="flex items-center gap-3 w-full sm:w-auto flex-1">
+                <div id="thumbWrapper" class="w-12 h-12 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center overflow-hidden shrink-0">
+                    <i data-lucide="image" class="w-5 h-5 text-slate-400"></i>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <label class="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-0.5">학습지 제목 (PDF 상단에 표시됨)</label>
+                    <input type="text" id="docTitleInput" value="Eagle C1 - Lesson 10 / Lesson 01~09 Review" 
+                           class="w-full font-bold text-slate-800 text-base bg-slate-50 hover:bg-slate-100 focus:bg-white border border-transparent focus:border-blue-400 rounded-lg px-2.5 py-1 outline-none transition-all">
+                </div>
+            </div>
+
+            <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
+                <span class="text-xs font-medium text-slate-500 bg-slate-100 px-3 py-1.5 rounded-lg">
+                    총 <strong id="wordCountBadge" class="text-blue-600">50</strong>개 단어
+                </span>
+                <button onclick="printCurrentTab(false)" class="inline-flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs sm:text-sm font-semibold px-4 py-2.5 rounded-xl shadow-sm transition-all">
+                    <i data-lucide="printer" class="w-4 h-4"></i>
+                    <span>현재 탭 PDF 저장 / 인쇄</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- 3가지 학습 모드 탭 네비게이션 -->
+        <div class="flex flex-wrap gap-2 mb-6 no-print bg-slate-200/70 p-1.5 rounded-2xl">
+            <button onclick="switchTab('guide')" id="tab-guide" class="tab-btn flex-1 min-w-[140px] flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl font-bold text-sm transition-all bg-white text-blue-600 shadow-sm">
+                <i data-lucide="sparkles" class="w-4 h-4"></i>
+                <span>1. 초4 쉬운 단어 해설</span>
+            </button>
+            <button onclick="switchTab('sentences')" id="tab-sentences" class="tab-btn flex-1 min-w-[140px] flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl font-semibold text-sm text-slate-600 hover:text-slate-900 transition-all">
+                <i data-lucide="message-square-quote" class="w-4 h-4"></i>
+                <span>2. 단어 활용 예문</span>
+            </button>
+            <button onclick="switchTab('quiz')" id="tab-quiz" class="tab-btn flex-1 min-w-[140px] flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl font-semibold text-sm text-slate-600 hover:text-slate-900 transition-all">
+                <i data-lucide="pencil-line" class="w-4 h-4"></i>
+                <span>3. Blank Quiz (온라인/PDF)</span>
+            </button>
+        </div>
+
+        <!-- 인쇄용 공통 헤더 (화면에서는 숨김, PDF 저장 시 최상단 출력) -->
+        <div class="print-header">
+            <div class="flex justify-between items-end">
+                <div>
+                    <h1 id="printDocTitle" class="text-xl font-bold text-slate-900">Eagle C1 - Lesson 10 / Lesson 01~09 Review</h1>
+                    <p id="printDocSubtitle" class="text-xs text-slate-600 mt-1">초등 4학년 맞춤 쉬운 단어 해설장</p>
+                </div>
+                <div id="printQuizInfo" class="hidden text-xs font-semibold text-slate-700 border border-slate-400 px-3 py-1.5 rounded">
+                    이름: _______________ &nbsp;&nbsp;|&nbsp;&nbsp; 점수: _____ / <span id="printTotalCount">50</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 컨텐츠 출력 컨테이너 -->
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 sm:p-8 print-container">
+            
+            <!-- [탭 1] 초4 눈높이 쉬운 단어 해설장 -->
+            <div id="view-guide" class="tab-view">
+                <div class="flex items-center justify-between mb-4 pb-3 border-b-2 border-blue-600 no-print">
+                    <div>
+                        <h2 class="text-lg font-bold text-slate-900">초등 4학년 눈높이 단어 해설장</h2>
+                        <p class="text-xs text-slate-500 mt-0.5">어려운 한자어 뜻을 초등학생이 이해하기 쉬운 말로 풀었습니다.</p>
+                    </div>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full border-collapse border border-slate-300 text-sm">
+                        <thead>
+                            <tr class="bg-slate-100 text-slate-700">
+                                <th class="border border-slate-300 py-2.5 px-2 text-center w-12">#</th>
+                                <th class="border border-slate-300 py-2.5 px-3 text-left w-[34%]">영어 표현 (핵심 단어 강조)</th>
+                                <th class="border border-slate-300 py-2.5 px-3 text-left w-[24%]">단어장 뜻</th>
+                                <th class="border border-slate-300 py-2.5 px-3 text-left w-[37%]">초등 4학년 쉬운 풀이</th>
+                            </tr>
+                        </thead>
+                        <tbody id="guideTableBody">
+                            <!-- JS로 동적 렌더링 -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- [탭 2] 단어 활용 예문 학습장 -->
+            <div id="view-sentences" class="tab-view hidden">
+                <div class="flex items-center justify-between mb-5 pb-3 border-b-2 border-purple-600 no-print">
+                    <div>
+                        <h2 class="text-lg font-bold text-purple-950">단어 활용 예문 학습장</h2>
+                        <p class="text-xs text-slate-500 mt-0.5">각 핵심 표현이 문장 속에서 어떻게 쓰이는지 예문과 해석으로 익혀보세요.</p>
+                    </div>
+                </div>
+                <div id="sentencesList" class="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                    <!-- JS로 동적 렌더링 -->
+                </div>
+            </div>
+
+            <!-- [탭 3] Blank Quiz (온라인 풀기 + PDF 시험지) -->
+            <div id="view-quiz" class="tab-view hidden">
+                <!-- 퀴즈 컨트롤 패널 (인쇄 시 숨김) -->
+                <div class="bg-slate-50 border border-slate-200 rounded-2xl p-4 mb-6 no-print flex flex-wrap items-center justify-between gap-4">
+                    <div>
+                        <h2 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                            <span>실전 빈칸 단어 테스트</span>
+                            <span id="quizScoreBadge" class="hidden bg-blue-600 text-white text-xs px-2.5 py-0.5 rounded-full"></span>
+                        </h2>
+                        <p class="text-xs text-slate-500 mt-0.5">빈칸에 알맞은 영어 단어를 직접 입력하고 채점하거나, 시험지 PDF로 출력하세요.</p>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <button onclick="gradeQuiz()" class="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-bold px-4 py-2 rounded-xl shadow-sm transition-all">
+                            <i data-lucide="check-circle-2" class="w-4 h-4"></i>
+                            <span>채점하기</span>
+                        </button>
+                        <button onclick="resetQuiz()" class="inline-flex items-center gap-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 text-xs sm:text-sm font-semibold px-3.5 py-2 rounded-xl transition-all">
+                            <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                            <span>다시 풀기</span>
+                        </button>
+                        <button onclick="printCurrentTab(true)" class="inline-flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs sm:text-sm font-semibold px-3.5 py-2 rounded-xl transition-all" title="내가 입력한 답안이 표시된 상태로 인쇄/PDF 저장">
+                            <i data-lucide="file-check" class="w-4 h-4"></i>
+                            <span>정답지 PDF 저장</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 2단 그리드 시험지 레이아웃 -->
+                <div id="quizGrid" class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2">
+                    <!-- JS로 동적 렌더링 -->
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <script>
+        // 런타임 환경에서 안전하게 주입되는 API 키 사용 (외부 비공개)
+        const GEMINI_API_KEY = "";
+        let currentTab = 'guide';
+
+        // 초기 샘플 데이터 (방금 올려주신 Eagle C1 단어 50개)
+        let vocabData = [
+            { phrase: "ingenuity of an idea", target: "ingenuity", meaning: "아이디어의 독창성", easy: "남들과 다르게 기발하고 똑똑한 생각", exEn: "Everyone praised the ingenuity of an idea that solved the problem easily.", exKo: "모두가 그 문제를 쉽게 해결해 낸 아이디어의 독창성을 칭찬했다." },
+            { phrase: "settlers in a colony", target: "settlers", meaning: "식민지 정착민", easy: "새로운 땅으로 옮겨가서 자리를 잡고 사는 사람들", exEn: "The early settlers in a colony built their own homes from wood.", exKo: "식민지의 초기 정착민들은 나무로 직접 집을 지었다." },
+            { phrase: "heliocentric movement", target: "heliocentric", meaning: "태양 중심의 운동", easy: "지구가 아니라 태양이 우주의 중심이라는 생각", exEn: "Galileo supported the heliocentric movement of planets.", exKo: "갈릴레오는 행성들이 태양을 중심으로 움직인다는 설을 지지했다." },
+            { phrase: "accurate depiction", target: "accurate", meaning: "정확한 묘사", easy: "틀린 부분 없이 똑같이 잘 그려내거나 설명한 것", exEn: "The painter gave an accurate depiction of the mountain.", exKo: "그 화가는 산의 모습을 정확하게 묘사했다." },
+            { phrase: "destructive effects of deforestation", target: "deforestation", meaning: "삼림 벌채의 파괴적인 영향", easy: "숲의 나무를 마구 베어내서 생기는 나쁜 결과", exEn: "Animals suffer from the destructive effects of deforestation.", exKo: "동물들은 삼림 벌채로 인한 파괴적인 영향으로 고통받는다." },
+            { phrase: "deep-rooted problems", target: "deep-rooted", meaning: "뿌리 깊은 문제들", easy: "아주 오래전부터 이어져서 고치기 힘든 문제들", exEn: "It takes time to solve deep-rooted problems in society.", exKo: "사회의 뿌리 깊은 문제들을 해결하려면 시간이 걸린다." },
+            { phrase: "banana fritter", target: "fritter", meaning: "바나나 튀김", easy: "바나나에 튀김옷을 입혀 기름에 튀긴 간식", exEn: "We ordered a sweet banana fritter for dessert.", exKo: "우리는 디저트로 달콤한 바나나 튀김을 주문했다." },
+            { phrase: "patron of young artists", target: "patron", meaning: "젊은 화가들의 후원자", easy: "젊은 예술가들이 그림을 잘 그리도록 돈을 대주는 사람", exEn: "The rich man became a generous patron of young artists.", exKo: "그 부유한 남자는 젊은 화가들의 관대한 후원자가 되었다." },
+            { phrase: "revolutionary fringe group", target: "fringe", meaning: "혁명적 비주류파", easy: "세상을 바꾸려 하지만 아직은 소수인 사람들의 모임", exEn: "A revolutionary fringe group demanded new laws.", exKo: "혁명적인 비주류파 집단이 새로운 법을 요구했다." },
+            { phrase: "bomb hoax", target: "hoax", meaning: "폭탄을 설치했다는 장난질", easy: "폭탄을 숨겼다고 사람들을 속이는 나쁜 거짓말", exEn: "The school was evacuated due to a stupid bomb hoax.", exKo: "학교는 어리석은 폭탄 설치 거짓말 소동으로 인해 대피했다." },
+            { phrase: "covert agent", target: "covert", meaning: "비밀 요원", easy: "정체를 숨기고 몰래 임무를 수행하는 스파이", exEn: "The covert agent collected secret data in the city.", exKo: "그 비밀 요원은 도시에서 기밀 자료를 수집했다." },
+            { phrase: "projects fall flat", target: "fall flat", meaning: "사업이 참패하다", easy: "열심히 준비한 계획이나 일이 완전히 실패하다", exEn: "Without good planning, many business projects fall flat.", exKo: "좋은 계획이 없으면 많은 사업 프로젝트가 참패하게 된다." },
+            { phrase: "gain momentum", target: "gain momentum", meaning: "탄력이 붙다", easy: "하던 일에 속도와 힘이 붙어 점점 더 잘 풀리다", exEn: "Our campaign started to gain momentum this week.", exKo: "우리 캠페인은 이번 주부터 탄력이 붙기 시작했다." },
+            { phrase: "entry-level worker", target: "entry-level", meaning: "말단 사원", easy: "회사에 갓 들어온 신입 사원", exEn: "He began his career as an entry-level worker.", exKo: "그는 말단 사원으로 그의 직장 생활을 시작했다." },
+            { phrase: "business proposition", target: "proposition", meaning: "사업 제의", easy: "같이 일하거나 사업을 해보자고 제안하는 것", exEn: "She received an attractive business proposition from a partner.", exKo: "그녀는 파트너로부터 매력적인 사업 제의를 받았다." },
+            { phrase: "provision of food and housing", target: "provision", meaning: "식량과 주택 공급", easy: "먹을 음식과 살 집을 마련해서 나누어 주는 것", exEn: "The government ensured the provision of food and housing for all.", exKo: "정부는 모두를 위한 식량과 주택 공급을 보장했다." },
+            { phrase: "widespread famine", target: "famine", meaning: "널리 퍼진 기근", easy: "농사가 안 되어 많은 사람이 굶주리는 심한 가뭄", exEn: "The dry weather caused a widespread famine in the region.", exKo: "건조한 날씨가 그 지역에 널리 퍼진 기근을 일으켰다." },
+            { phrase: "virtue-signaling on social media", target: "virtue-signaling", meaning: "SNS 상의 미덕 과시", easy: "인터넷에 내가 착한 일을 했다고 티 내며 자랑하는 것", exEn: "People dislike fake virtue-signaling on social media.", exKo: "사람들은 SNS에서 가식적으로 착한 척하는 미덕 과시를 싫어한다." },
+            { phrase: "desolate winter landscape", target: "desolate", meaning: "황량한 겨울 풍경", easy: "아무것도 없이 텅 비고 썰렁한 겨울 모습", exEn: "The snow covered the desolate winter landscape.", exKo: "눈이 황량한 겨울 풍경을 덮었다." },
+            { phrase: "water turbine", target: "turbine", meaning: "수력 터빈", easy: "흐르는 물의 힘으로 빙글빙글 돌아 전기를 만드는 기계", exEn: "The fast river flow turns the water turbine to make energy.", exKo: "빠른 강물이 수력 터빈을 돌려 전기를 만든다." },
+            { phrase: "at the king's behest", target: "behest", meaning: "왕의 명령으로", easy: "왕이 꼭 하라고 시켜서", exEn: "The palace was rebuilt at the king's behest.", exKo: "그 궁전은 왕의 명령으로 재건되었다." },
+            { phrase: "undercover agent", target: "undercover", meaning: "비밀 요원", easy: "신분을 감추고 몰래 접근하는 경찰이나 요원", exEn: "The undercover agent wore everyday clothes to hide.", exKo: "그 비밀 요원은 정체를 숨기기 위해 평복을 입었다." },
+            { phrase: "emit steam", target: "emit", meaning: "증기를 내뿜다", easy: "뜨거운 김(수증기)을 밖으로 뿜어내다", exEn: "The old kettle began to emit steam when boiling.", exKo: "오래된 주전자가 끓으면서 증기를 내뿜기 시작했다." },
+            { phrase: "convert sunlight into energy", target: "convert", meaning: "햇빛을 에너지로 전환하다", easy: "햇빛을 모아서 우리가 쓸 수 있는 전기 힘으로 바꾸다", exEn: "Solar panels convert sunlight into energy for our house.", exKo: "태양광 패널은 우리 집을 위해 햇빛을 에너지로 전환해 준다." },
+            { phrase: "breakneck speed", target: "breakneck", meaning: "맹렬한 속도", easy: "목이 부러질 정도로 위험하고 엄청나게 빠른 속도", exEn: "The sports car drove past at breakneck speed.", exKo: "스포츠카가 맹렬한 속도로 지나갔다." },
+            { phrase: "technologically feasible", target: "feasible", meaning: "기술적으로 실행 가능한", easy: "지금 가진 과학 기술로 충분히 해낼 수 있는", exEn: "Building electric planes is now technologically feasible.", exKo: "전기 비행기를 만드는 것은 이제 기술적으로 실행 가능하다." },
+            { phrase: "proportion of body fat", target: "proportion", meaning: "체지방 비율", easy: "내 몸무게 중에서 지방이 차지하는 양", exEn: "Exercise helps reduce the proportion of body fat.", exKo: "운동은 체지방 비율을 줄이는 데 도움을 준다." },
+            { phrase: "collaborative study", target: "collaborative", meaning: "공동 연구", easy: "여러 사람이 힘을 합쳐서 함께 연구하는 것", exEn: "Two universities published a collaborative study on space.", exKo: "두 대학이 우주에 관한 공동 연구를 발표했다." },
+            { phrase: "online witch-hunt", target: "witch-hunt", meaning: "온라인상의 마녀사냥", easy: "인터넷에서 특정 사람을 몰아세우며 괴롭히는 일", exEn: "Fake news sparked an unfair online witch-hunt.", exKo: "가짜 뉴스가 부당한 온라인상의 마녀사냥을 불러일으켰다." },
+            { phrase: "curb one's appetite", target: "curb", meaning: "식욕을 억제하다", easy: "먹고 싶은 마음을 꾹 참다", exEn: "Drinking warm tea helps curb one's appetite.", exKo: "따뜻한 차를 마시는 것은 식욕을 억제하는 데 도움이 된다." },
+            { phrase: "normalized relations", target: "normalized", meaning: "정상화된 관계", easy: "싸우거나 멀어졌던 사이가 다시 좋아진 관계", exEn: "The two countries finally normalized relations after years.", exKo: "두 나라는 수년 만에 마침내 관계를 정상화했다." },
+            { phrase: "conspicuous location", target: "conspicuous", meaning: "눈에 잘 띄는 위치", easy: "지나가는 누구나 쉽게 볼 수 있는 자리", exEn: "The store opened in a conspicuous location near the station.", exKo: "그 가게는 역 근처의 눈에 잘 띄는 위치에 문을 열었다." },
+            { phrase: "structure of social capital", target: "social capital", meaning: "사회적 자본의 구조", easy: "사람들이 서로 믿고 도와주며 맺는 관계의 틀", exEn: "Trust builds a strong structure of social capital in town.", exKo: "신뢰는 마을 안에 튼튼한 사회적 자본의 구조를 형성한다." },
+            { phrase: "blot out evidence", target: "evidence", meaning: "증거를 인멸하다", easy: "잘못을 저지른 흔적을 지워서 못 찾게 없애버리다", exEn: "The suspect tried to blot out evidence after the crime.", exKo: "용의자는 범행 후 증거를 인멸하려고 시도했다." },
+            { phrase: "hallowed grounds of the church", target: "hallowed", meaning: "교회의 성지", easy: "교회에서 아주 소중하고 거룩하게 여기는 땅", exEn: "Visitors walked quietly on the hallowed grounds of the church.", exKo: "방문객들은 교회의 성지를 조용히 걸었다." },
+            { phrase: "pernicious disease", target: "pernicious", meaning: "치명적인 질병", easy: "목숨을 잃을 수 있을 만큼 아주 위험하고 무서운 병", exEn: "Doctors worked hard to cure the pernicious disease.", exKo: "의사들은 치명적인 질병을 치료하기 위해 열심히 노력했다." },
+            { phrase: "discretionary spending", target: "discretionary", meaning: "재량적 지출", easy: "꼭 필요한 데 말고 내가 쓰고 싶은 대로 쓰는 돈", exEn: "Buying video games belongs to discretionary spending.", exKo: "비디오 게임을 사는 것은 재량적 지출에 해당한다." },
+            { phrase: "extensive research", target: "extensive", meaning: "광범위한 연구", easy: "아주 넓고 깊게 여러 가지를 꼼꼼히 조사하고 연구함", exEn: "The student conducted extensive research before writing.", exKo: "그 학생은 글을 쓰기 전에 광범위한 연구를 수행했다." },
+            { phrase: "enticing offer", target: "enticing", meaning: "솔깃한 제안", easy: "듣자마자 마음이 쏠리고 기분 좋아지는 제안", exEn: "He accepted the job because of an enticing offer.", exKo: "그는 솔깃한 제안 때문에 그 일자리를 수락했다." },
+            { phrase: "resettle in a new country", target: "resettle", meaning: "새로운 나라에 재정착하다", easy: "낯선 나라로 이사를 가서 새롭게 삶의 터전을 잡다", exEn: "Many families had to resettle in a new country.", exKo: "많은 가족들이 새로운 나라에 재정착해야 했다." },
+            { phrase: "ravage a village", target: "ravage", meaning: "마을을 황폐화시키다", easy: "전쟁이나 태풍 등으로 마을을 완전히 망가뜨리다", exEn: "A strong storm can ravage a village overnight.", exKo: "강력한 폭풍은 하룻밤 사이에 마을을 황폐화시킬 수 있다." },
+            { phrase: "restructure an organization", target: "restructure", meaning: "조직을 재편성하다", easy: "회사나 단체의 팀과 역할을 새롭게 다시 짜다", exEn: "The CEO decided to restructure an organization for efficiency.", exKo: "CEO는 효율성을 위해 조직을 재편성하기로 결정했다." },
+            { phrase: "food shortage", target: "shortage", meaning: "식량 부족", easy: "먹을 음식이 모자라는 상태", exEn: "Bad weather caused a severe food shortage in winter.", exKo: "악천후로 인해 겨울에 심각한 식량 부족이 발생했다." },
+            { phrase: "advantage and drawback", target: "drawback", meaning: "장점과 단점", easy: "좋은 점과 나쁜(불편한) 점", exEn: "Every plan has its own advantage and drawback.", exKo: "모든 계획에는 나름의 장점과 단점이 존재한다." },
+            { phrase: "infiltrate the castle", target: "infiltrate", meaning: "성에 잠입하다", easy: "적에게 들키지 않게 몰래 성 안으로 숨어들어가다", exEn: "The spies planned to infiltrate the castle at night.", exKo: "간첩들은 밤에 성에 잠입할 계획을 세웠다." },
+            { phrase: "romanticize crimes", target: "romanticize", meaning: "범죄를 미화하다", easy: "나쁜 범죄를 마치 멋진 일인 것처럼 포장하다", exEn: "Movies should never romanticize crimes or bad actions.", exKo: "영화가 범죄나 나쁜 행동을 미화해서는 안 된다." },
+            { phrase: "bear a smile", target: "bear", meaning: "미소를 띠다", easy: "얼굴에 환한 웃음을 짓다", exEn: "She managed to bear a smile despite being tired.", exKo: "그녀는 피곤함에도 불구하고 미소를 띨 수 있었다." },
+            { phrase: "saturated market", target: "saturated", meaning: "포화된 시장", easy: "가게가 이미 너무 많아서 더 들어갈 자리가 없는 시장", exEn: "Opening another bakery in this saturated market is hard.", exKo: "이 포화된 시장에서 또 다른 빵집을 여는 것은 어렵다." },
+            { phrase: "bombard the spokesperson with questions", target: "bombard", meaning: "대변인에게 질문을 퍼붓다", easy: "대표로 말하는 사람에게 폭탄처럼 질문을 마구 쏟아붓다", exEn: "Reporters began to bombard the spokesperson with questions.", exKo: "기자들이 대변인에게 질문을 마구 퍼붓기 시작했다." },
+            { phrase: "regulate students' hairstyles", target: "regulate", meaning: "학생들의 두발을 규제하다", easy: "학생들의 머리 모양을 규칙으로 정해서 제한하다", exEn: "The school no longer needs to regulate students' hairstyles strictly.", exKo: "학교는 더 이상 학생들의 두발을 엄격하게 규제할 필요가 없다." }
+        ];
+
+        // 초기화
+        document.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            renderAll();
+        });
+
+        // HTML 이스케이프 헬퍼
+        function escapeHtml(text) {
+            if (!text) return "";
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // 핵심 단어 하이라이트 함수
+        function highlightTarget(fullText, targetWord, className = "font-bold text-blue-700") {
+            const escapedFull = escapeHtml(fullText);
+            const escapedTarget = escapeHtml(targetWord);
+            if (!escapedTarget) return escapedFull;
+            const regex = new RegExp(`(${escapedTarget.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+            return escapedFull.replace(regex, `<span class="${className}">$1</span>`);
+        }
+
+        // 모든 뷰 렌더링
+        function renderAll() {
+            document.getElementById('wordCountBadge').textContent = vocabData.length;
+            document.getElementById('printTotalCount').textContent = vocabData.length;
+            renderGuide();
+            renderSentences();
+            renderQuiz();
+            lucide.createIcons();
+        }
+
+        // 1. 초4 쉬운 해설 렌더링
+        function renderGuide() {
+            const tbody = document.getElementById('guideTableBody');
+            tbody.innerHTML = vocabData.map((item, idx) => `
+                <tr class="${idx % 2 === 1 ? 'bg-slate-50/70' : 'bg-white'} hover:bg-blue-50/40 transition-colors page-break-inside-avoid">
+                    <td class="border border-slate-300 py-2 px-2 text-center font-bold text-slate-500">${idx + 1}</td>
+                    <td class="border border-slate-300 py-2 px-3 text-slate-800">${highlightTarget(item.phrase, item.target, "font-bold text-blue-700")}</td>
+                    <td class="border border-slate-300 py-2 px-3 text-slate-700">${escapeHtml(item.meaning)}</td>
+                    <td class="border border-slate-300 py-2 px-3 font-medium text-emerald-700">${escapeHtml(item.easy)}</td>
+                </tr>
+            `).join('');
+        }
+
+        // 2. 단어 활용 예문 렌더링
+        function renderSentences() {
+            const list = document.getElementById('sentencesList');
+            list.innerHTML = vocabData.map((item, idx) => `
+                <div class="border border-slate-200 border-l-4 border-l-purple-600 bg-slate-50/60 rounded-r-xl p-3.5 page-break-inside-avoid">
+                    <div class="flex flex-wrap items-baseline justify-between gap-2 mb-1.5">
+                        <div class="text-sm font-bold text-slate-900">
+                            <span class="text-purple-600 mr-1">${idx + 1}.</span>
+                            ${highlightTarget(item.phrase, item.target, "text-purple-700 underline decoration-purple-300 underline-offset-2")}
+                        </div>
+                        <span class="text-xs text-slate-500 font-medium">(${escapeHtml(item.meaning)})</span>
+                    </div>
+                    <p class="text-xs sm:text-sm text-slate-800 leading-relaxed mb-1">
+                        ${highlightTarget(item.exEn, item.target, "font-bold text-purple-700")}
+                    </p>
+                    <p class="text-xs text-slate-500">
+                        → ${escapeHtml(item.exKo)}
+                    </p>
+                </div>
+            `).join('');
+        }
+
+        // 3. Blank Quiz 렌더링
+        function renderQuiz() {
+            const grid = document.getElementById('quizGrid');
+            document.getElementById('quizScoreBadge').classList.add('hidden');
+
+            grid.innerHTML = vocabData.map((item, idx) => {
+                // phrase에서 target 단어를 input 박스로 치환
+                const escapedPhrase = escapeHtml(item.phrase);
+                const escapedTarget = escapeHtml(item.target);
+                const regex = new RegExp(`(${escapedTarget.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'i');
+                
+                const inputHtml = `<input type="text" 
+                    data-index="${idx}" 
+                    data-answer="${escapedTarget}" 
+                    autocomplete="off" 
+                    autocapitalize="off" 
+                    spellcheck="false"
+                    placeholder="입력"
+                    onkeydown="if(event.key==='Enter') focusNextQuizInput(${idx})"
+                    class="quiz-input inline-block w-28 sm:w-32 px-2 py-0.5 mx-1 text-center text-sm font-semibold text-blue-700 bg-blue-50/50 border-b-2 border-slate-400 focus:border-blue-600 focus:bg-white rounded-t outline-none transition-all">`;
+
+                let blankedPhrase = escapedPhrase;
+                if (regex.test(escapedPhrase)) {
+                    blankedPhrase = escapedPhrase.replace(regex, inputHtml);
+                } else {
+                    blankedPhrase = `${inputHtml} <span class="text-slate-400 text-xs">(${escapedPhrase})</span>`;
+                }
+
+                return `
+                    <div class="flex flex-col justify-center py-2 px-2.5 border-b border-dashed border-slate-200 page-break-inside-avoid">
+                        <div class="flex items-center justify-between gap-2">
+                            <div class="text-sm text-slate-800 flex-1 leading-snug">
+                                <span class="font-bold text-slate-400 inline-block w-6">${idx + 1}.</span>
+                                ${blankedPhrase}
+                            </div>
+                            <div class="text-right shrink-0 flex items-center gap-1.5">
+                                <span class="text-xs text-slate-600 font-medium">${escapeHtml(item.meaning)}</span>
+                                <button onclick="showSingleHint(${idx})" class="quiz-hint-btn text-slate-300 hover:text-amber-500 p-0.5" title="첫 글자 힌트">
+                                    <i data-lucide="lightbulb" class="w-3.5 h-3.5"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div id="quiz-feedback-${idx}" class="quiz-feedback hidden text-xs mt-1 pl-6 font-medium"></div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // 엔터키 입력 시 다음 빈칸으로 이동
+        function focusNextQuizInput(currentIdx) {
+            const nextInput = document.querySelector(`.quiz-input[data-index="${currentIdx + 1}"]`);
+            if (nextInput) nextInput.focus();
+        }
+
+        // 개별 힌트 보기
+        function showSingleHint(idx) {
+            const input = document.querySelector(`.quiz-input[data-index="${idx}"]`);
+            if (!input) return;
+            const ans = input.dataset.answer;
+            if (!input.value) {
+                input.value = ans.charAt(0);
+            }
+            input.focus();
+        }
+
+        // 퀴즈 채점하기
+        function gradeQuiz() {
+            const inputs = document.querySelectorAll('.quiz-input');
+            let correctCount = 0;
+
+            inputs.forEach((input) => {
+                const idx = input.dataset.index;
+                const userAns = input.value.trim().toLowerCase();
+                const correctAns = input.dataset.answer.trim().toLowerCase();
+                const feedbackEl = document.getElementById(`quiz-feedback-${idx}`);
+
+                input.classList.remove('border-slate-400', 'border-emerald-500', 'bg-emerald-50', 'text-emerald-700', 'border-rose-500', 'bg-rose-50', 'text-rose-700');
+                feedbackEl.classList.remove('hidden', 'text-emerald-600', 'text-rose-600');
+
+                if (userAns === correctAns) {
+                    correctCount++;
+                    input.classList.add('border-emerald-500', 'bg-emerald-50', 'text-emerald-700');
+                    feedbackEl.textContent = "✓ 정답입니다!";
+                    feedbackEl.classList.add('text-emerald-600');
+                } else {
+                    input.classList.add('border-rose-500', 'bg-rose-50', 'text-rose-700');
+                    feedbackEl.innerHTML = `✗ 오답 (정답: <strong class="underline">${escapeHtml(input.dataset.answer)}</strong>)`;
+                    feedbackEl.classList.add('text-rose-600');
+                }
+            });
+
+            const badge = document.getElementById('quizScoreBadge');
+            badge.textContent = `점수: ${correctCount} / ${vocabData.length}점 (${Math.round((correctCount / vocabData.length) * 100)}점)`;
+            badge.classList.remove('hidden');
+
+            showStatus('success', `채점이 완료되었습니다! (${correctCount} / ${vocabData.length}개 정답)`, '틀린 문제는 아래에 표시된 정답을 확인하고 다시 풀어보세요.');
+        }
+
+        // 퀴즈 초기화
+        function resetQuiz() {
+            renderQuiz();
+            lucide.createIcons();
+            hideStatus();
+        }
+
+        // 탭 전환
+        function switchTab(tabName) {
+            currentTab = tabName;
+
+            // 버튼 스타일 업데이트
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('bg-white', 'text-blue-600', 'shadow-sm', 'font-bold');
+                btn.classList.add('text-slate-600', 'font-semibold');
+            });
+            const activeBtn = document.getElementById(`tab-${tabName}`);
+            activeBtn.classList.remove('text-slate-600', 'font-semibold');
+            activeBtn.classList.add('bg-white', 'text-blue-600', 'shadow-sm', 'font-bold');
+
+            // 뷰 전환
+            document.querySelectorAll('.tab-view').forEach(view => view.classList.add('hidden'));
+            document.getElementById(`view-${tabName}`).classList.remove('hidden');
+        }
+
+        // 현재 탭 PDF 저장 / 인쇄
+        function printCurrentTab(includeAnswers = false) {
+            const titleVal = document.getElementById('docTitleInput').value.trim() || '단어 학습장';
+            document.getElementById('printDocTitle').textContent = titleVal;
+
+            const subtitleEl = document.getElementById('printDocSubtitle');
+            const quizInfoEl = document.getElementById('printQuizInfo');
+
+            if (currentTab === 'guide') {
+                subtitleEl.textContent = '1. 초등 4학년 맞춤 쉬운 단어 해설장';
+                quizInfoEl.classList.add('hidden');
+            } else if (currentTab === 'sentences') {
+                subtitleEl.textContent = '2. 단어 활용 대표 예문 학습장';
+                quizInfoEl.classList.add('hidden');
+            } else if (currentTab === 'quiz') {
+                subtitleEl.textContent = includeAnswers ? '3. Blank Quiz (정답지)' : '3. Blank Quiz (실전 빈칸 시험지)';
+                quizInfoEl.classList.remove('hidden');
+            }
+
+            if (includeAnswers) {
+                document.body.classList.add('print-with-answers');
+            } else {
+                document.body.classList.remove('print-with-answers');
+            }
+
+            window.print();
+        }
+
+        // 상태 메시지 표시
+        function showStatus(type, title, desc) {
+            const banner = document.getElementById('statusBanner');
+            const icon = document.getElementById('statusIcon');
+            const titleEl = document.getElementById('statusTitle');
+            const descEl = document.getElementById('statusDesc');
+
+            banner.className = 'mb-6 rounded-2xl p-4 border shadow-sm transition-all no-print';
+            if (type === 'loading') {
+                banner.classList.add('bg-blue-50', 'border-blue-200', 'text-blue-900');
+                icon.innerHTML = `<div class="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>`;
+            } else if (type === 'success') {
+                banner.classList.add('bg-emerald-50', 'border-emerald-200', 'text-emerald-900');
+                icon.innerHTML = `<i data-lucide="check-circle" class="w-5 h-5 text-emerald-600"></i>`;
+            } else if (type === 'error') {
+                banner.classList.add('bg-rose-50', 'border-rose-200', 'text-rose-900');
+                icon.innerHTML = `<i data-lucide="alert-circle" class="w-5 h-5 text-rose-600"></i>`;
+            }
+
+            titleEl.textContent = title;
+            descEl.textContent = desc;
+            banner.classList.remove('hidden');
+            lucide.createIcons();
+        }
+
+        function hideStatus() {
+            document.getElementById('statusBanner').classList.add('hidden');
+        }
+
+        // 이미지 업로드 및 Gemini API 호출
+        document.getElementById('imageUpload').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            // 썸네일 미리보기 업데이트
+            const reader = new FileReader();
+            reader.onload = async (event) => {
+                const dataUrl = event.target.result;
+                document.getElementById('thumbWrapper').innerHTML = `<img src="${dataUrl}" class="w-full h-full object-cover" alt="업로드된 단어장">`;
+
+                const base64Data = dataUrl.split(',')[1];
+                const mimeType = file.type || 'image/jpeg';
+
+                await processImageWithGemini(base64Data, mimeType);
+            };
+            reader.readAsDataURL(file);
+            e.target.value = ''; // 동일 파일 재업로드 허용
+        });
+
+        async function processImageWithGemini(base64Data, mimeType) {
+            showStatus('loading', 'AI가 단어장 사진을 분석하고 있습니다...', '단어를 추출하고 초등학교 4학년 눈높이 풀이, 예문, 퀴즈를 생성 중입니다. 잠시만 기다려주세요.');
+
+            const promptText = `
+이 단어장 이미지에 있는 모든 영어 표현(또는 단어)과 한글 뜻을 정확히 추출해 주세요.
+그리고 각 항목마다 다음 5가지 정보를 포함한 JSON 형식으로 응답해 주세요:
+1. "title": 이미지 상단에 적힌 교재나 단원 제목 (없으면 "맞춤 단어 학습장")
+2. "items": 단어 객체들의 배열. 각 객체는 아래 키를 가져야 합니다:
+   - "phrase": 이미지에 적힌 전체 영어 표현 (예: "ingenuity of an idea")
+   - "target": 이미지에서 진하게(굵게) 강조된 핵심 영단어 또는 숙어 (예: "ingenuity"). 강조 표시가 없다면 가장 핵심이 되는 단어 1개 선택. 반드시 "phrase" 안에 정확히 포함된 철자여야 함.
+   - "meaning": 이미지에 적힌 원래 한글 뜻
+   - "easy": 초등학교 4학년 학생이 단번에 이해할 수 있도록 어려운 한자어를 풀어서 쓴 쉽고 친절한 설명
+   - "exEn": 해당 "phrase" 또는 "target" 단어가 자연스럽게 쓰인 초·중등 수준의 명확한 영어 예문 1개
+   - "exKo": 위 영어 예문(exEn)의 자연스러운 한국어 해석
+`;
+
+            const payload = {
+                contents: [
+                    {
+                        role: "user",
+                        parts: [
+                            { text: promptText },
+                            {
+                                inlineData: {
+                                    mimeType: mimeType,
+                                    data: base64Data
+                                }
+                            }
+                        ]
+                    }
+                ],
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: "OBJECT",
+                        properties: {
+                            title: { type: "STRING" },
+                            items: {
+                                type: "ARRAY",
+                                items: {
+                                    type: "OBJECT",
+                                    properties: {
+                                        phrase: { type: "STRING" },
+                                        target: { type: "STRING" },
+                                        meaning: { type: "STRING" },
+                                        easy: { type: "STRING" },
+                                        exEn: { type: "STRING" },
+                                        exKo: { type: "STRING" }
+                                    },
+                                    required: ["phrase", "target", "meaning", "easy", "exEn", "exKo"]
+                                }
+                            }
+                        },
+                        required: ["title", "items"]
+                    }
+                }
+            };
+
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`;
+
+            try {
+                const response = await fetchWithRetry(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json();
+                const rawText = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+                if (!rawText) {
+                    throw new Error("AI 응답에서 데이터를 찾을 수 없습니다.");
+                }
+
+                const parsed = JSON.parse(rawText);
+                if (parsed.items && parsed.items.length > 0) {
+                    vocabData = parsed.items;
+                    if (parsed.title) {
+                        document.getElementById('docTitleInput').value = parsed.title;
+                    }
+                    renderAll();
+                    showStatus('success', `총 ${vocabData.length}개의 단어 분석 완료!`, '초4 쉬운 해설, 예문, Blank Quiz가 모두 새로 생성되었습니다. 우측 상단 버튼으로 PDF 저장이 가능합니다.');
+                } else {
+                    throw new Error("이미지에서 단어를 추출하지 못했습니다. 더 선명한 사진으로 다시 시도해 주세요.");
+                }
+            } catch (err) {
+                showStatus('error', '이미지 분석 중 오류가 발생했습니다.', `${err.message}`);
+            }
+        }
+
+        // 지수 백오프 재시도 fetch 함수
+        async function fetchWithRetry(url, options, maxRetries = 3) {
+            let delay = 1000;
+            for (let i = 0; i < maxRetries; i++) {
+                const res = await fetch(url, options);
+                if (res.ok) return res;
+                if (res.status === 400 || res.status === 401 || res.status === 403) {
+                    const errData = await res.json().catch(() => ({}));
+                    throw new Error(errData?.error?.message || `API 인증/요청 오류 (${res.status})`);
+                }
+                if (i < maxRetries - 1) {
+                    await new Promise(r => setTimeout(r, delay));
+                    delay *= 2;
+                } else {
+                    throw new Error(`서버 응답 오류 (${res.status})`);
+                }
+            }
+        }
+    </script>
+</body>
+</html>
